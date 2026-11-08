@@ -1,0 +1,11 @@
+[package]
+name = "tongaku-player"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Playback feature: view and workflow."
+
+[dependencies]
+gpui-kit.workspace = true
+tongaku-playback = { path = "../tongaku-playback" }
+tongaku-ytmusic = { path = "../tongaku-ytmusic" }

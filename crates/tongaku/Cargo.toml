@@ -7,3 +7,5 @@ description.workspace = true
 
 [dependencies]
 gpui-kit.workspace = true
+tongaku-mpv = { path = "../tongaku-mpv" }
+tongaku-player = { path = "../tongaku-player" }

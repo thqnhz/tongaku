@@ -1,0 +1,8 @@
+[package]
+name = "tongaku-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Shared domain types."
+
+[dependencies]

@@ -1,0 +1,9 @@
+[package]
+name = "tongaku-playback"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Playback abstraction."
+
+[dependencies]
+thiserror.workspace = true

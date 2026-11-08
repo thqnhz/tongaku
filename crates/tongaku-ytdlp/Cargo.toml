@@ -1,0 +1,9 @@
+[package]
+name = "tongaku-ytdlp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "yt-dlp wrapper: page URL to direct stream URL."
+
+[dependencies]
+thiserror.workspace = true

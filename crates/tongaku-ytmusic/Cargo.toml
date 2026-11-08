@@ -1,0 +1,14 @@
+[package]
+name = "tongaku-ytmusic"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "YouTube Music (InnerTube) client."
+
+[dependencies]
+serde_json.workspace = true
+thiserror.workspace = true
+ureq.workspace = true
+
+tongaku-core = { path = "../tongaku-core" }
+tongaku-ytdlp = { path = "../tongaku-ytdlp" }

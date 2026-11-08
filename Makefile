@@ -6,7 +6,7 @@ lint:
 	cargo fmt
 	cargo clippy
 
-dev: lint
+dev:
 	cargo run
 
 # Should only do this in CI

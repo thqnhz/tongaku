@@ -1,0 +1,12 @@
+[package]
+name = "tongaku-mpv"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Mpv playback engine."
+
+[dependencies]
+serde_json.workspace = true
+thiserror.workspace = true
+
+tongaku-playback = { path = "../tongaku-playback" }
