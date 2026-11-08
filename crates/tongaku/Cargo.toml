@@ -1,0 +1,9 @@
+[package]
+name = "tongaku"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+
+[dependencies]
+gpui-kit.workspace = true

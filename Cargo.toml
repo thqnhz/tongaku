@@ -1,0 +1,12 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["ZyubyL"]
+description = "YouTube Music client for Desktop."
+
+[workspace.dependencies]
+gpui-kit = { version = "0.9.0", features = ["gpui-fast"] }
