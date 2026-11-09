@@ -71,8 +71,9 @@ impl Default for MpvPlayer {
 
 impl MpvPlayer {
     pub fn new() -> Self {
+        let mpv = Self::spawn_mpv().ok();
         Self {
-            mpv: Mutex::new(None),
+            mpv: Mutex::new(mpv),
         }
     }
 

@@ -4,9 +4,11 @@ use std::time::Duration;
 
 use gpui_kit::component::button::ButtonRounded;
 use gpui_kit::component::button::*;
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::*;
 use gpui_kit::component::{Icon, IconName};
+use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use tongaku_playback::{PlaybackStatus, Player};
@@ -17,40 +19,25 @@ pub struct PlayerView {
     track: Option<Track>,
     status: PlaybackStatus,
     error: Option<String>,
-    _fetch_task: Task<()>,
+    input: Entity<InputState>,
+    results: Vec<Track>,
+    searching: bool,
+    _search_task: Option<Task<()>>,
     _poll_task: Task<()>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl PlayerView {
-    pub fn new(video_id: String, player: Arc<dyn Player>, cx: &mut Context<Self>) -> Self {
-        let client = Client::new();
-
-        let _fetch_task = cx.spawn(async move |this, cx: &mut AsyncApp| {
-            let result = cx
-                .background_spawn(async move {
-                    let (track, stream) = client.get_track_with_stream(&video_id)?;
-                    let url = match stream {
-                        Some(stream) => stream.url,
-                        None => Client::stream_url(&track.id)?,
-                    };
-                    Ok::<_, YtError>((track, url))
-                })
-                .await;
-
-            this.update(cx, |view, cx| {
-                match result {
-                    Ok((track, url)) => {
-                        if let Err(err) = view.player.play(&url) {
-                            view.error = Some(err.to_string());
-                        }
-                        view.track = Some(track);
+    pub fn new(player: Arc<dyn Player>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let input = cx.new(|cx| InputState::new(window, cx));
+        let _subscriptions =
+            vec![
+                cx.subscribe(&input, |this: &mut Self, _, event: &InputEvent, cx| {
+                    if let InputEvent::PressEnter { .. } = event {
+                        this.run_search(cx)
                     }
-                    Err(err) => view.error = Some(err.to_string()),
-                }
-                cx.notify();
-            })
-            .ok();
-        });
+                }),
+            ];
 
         let poll_player = player.clone();
         let _poll_task = cx.spawn(async move |this, cx: &mut AsyncApp| {
@@ -58,7 +45,6 @@ impl PlayerView {
                 cx.background_executor()
                     .timer(Duration::from_millis(500))
                     .await;
-
                 let player = poll_player.clone();
                 let status = cx.background_spawn(async move { player.status() }).await;
 
@@ -77,9 +63,72 @@ impl PlayerView {
             track: None,
             status: PlaybackStatus::default(),
             error: None,
-            _fetch_task,
+            input,
+            results: Vec::new(),
+            searching: false,
+            _search_task: None,
             _poll_task,
+            _subscriptions,
         }
+    }
+
+    fn run_search(&mut self, cx: &mut Context<Self>) {
+        let query = self.input.read(cx).value().to_string();
+        if query.trim().is_empty() {
+            return;
+        }
+        self.searching = true;
+        self.error = None;
+        cx.notify();
+
+        let client = Client::new();
+        self._search_task = Some(cx.spawn(async move |this, cx: &mut AsyncApp| {
+            let result = cx
+                .background_spawn(async move { client.search(&query) })
+                .await;
+
+            this.update(cx, |view, cx| {
+                view.searching = false;
+                match result {
+                    Ok(results) => view.results = results,
+                    Err(err) => view.error = Some(err.to_string()),
+                }
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    fn play(&mut self, video_id: String, cx: &mut Context<Self>) {
+        self.error = None;
+        self.track = None;
+        cx.notify();
+
+        let client = Client::new();
+        cx.spawn(async move |this, cx: &mut AsyncApp| {
+            let result = cx
+                .background_spawn(async move {
+                    let track = client.get_track_with_stream(&video_id)?;
+                    let url = Client::stream_url(&track.id)?;
+                    Ok::<_, YtError>((track, url))
+                })
+                .await;
+
+            this.update(cx, |view, cx| {
+                match result {
+                    Ok((track, url)) => {
+                        if let Err(err) = view.player.play(&url) {
+                            view.error = Some(err.to_string());
+                        }
+                        view.track = Some(track);
+                    }
+                    Err(err) => view.error = Some(err.to_string()),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn status_text(&self) -> SharedString {
@@ -88,7 +137,7 @@ impl PlayerView {
         } else if let Some(track) = &self.track {
             format!("{} - {}", track.artist, track.title).into()
         } else {
-            "Loading...".into()
+            "Nothing playing - search a song".into()
         }
     }
 }
@@ -106,6 +155,23 @@ impl Render for PlayerView {
             .size_full()
             .items_center()
             .justify_center()
+            .child(Input::new(&self.input).w_64())
+            .when(self.searching, |this| this.child("Searching..."))
+            .child(
+                div()
+                    .v_flex()
+                    .w_96()
+                    .children(self.results.iter().take(10).map(|track| {
+                        let id = track.id.clone();
+                        div()
+                            .id(format!("search-result-{id}"))
+                            .cursor_pointer()
+                            .child(format!("{} - {}", track.artist, track.title))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.play(id.clone(), cx);
+                            }))
+                    })),
+            )
             .child(self.status_text())
             .child({
                 let percent = match self.status.duration {
