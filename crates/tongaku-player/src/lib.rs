@@ -1,5 +1,5 @@
 //! Playback feature: now-playing view and its workflow.
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,6 +16,10 @@ use gpui_kit::*;
 use tongaku_playback::{PlaybackStatus, Player};
 use tongaku_ytmusic::{Client, Track, YtError};
 
+use crate::queue::Queue;
+
+mod queue;
+
 pub struct PlayerView {
     player: Arc<dyn Player>,
     track: Option<Track>,
@@ -24,8 +28,7 @@ pub struct PlayerView {
     input: Entity<InputState>,
     results: Vec<Track>,
     resolved: HashMap<String, String>,
-    queue: VecDeque<Track>,
-    now: Option<usize>,
+    queue: queue::Queue,
     searching: bool,
     _search_task: Option<Task<()>>,
     _poll_task: Task<()>,
@@ -58,6 +61,7 @@ impl PlayerView {
                         view.status = status;
                         cx.notify();
                     }
+                    view.check_end(cx);
                 })
                 .ok();
             }
@@ -71,8 +75,7 @@ impl PlayerView {
             input,
             results: Vec::new(),
             resolved: HashMap::new(),
-            queue: VecDeque::new(),
-            now: None,
+            queue: Queue::new(),
             searching: false,
             _search_task: None,
             _poll_task,
@@ -108,11 +111,10 @@ impl PlayerView {
     }
 
     fn play(&mut self, video_id: String, cx: &mut Context<Self>) {
-        if let Some(ix) = self.queue.iter().position(|t| t.id == video_id) {
-            self.now = Some(ix);
-        } else if let Some(track) = self.results.iter().find(|t| t.id == video_id).cloned() {
-            self.queue.push_back(track);
-            self.now = Some(self.queue.len() - 1)
+        if !self.queue.select(&video_id) {
+            if let Some(track) = self.results.iter().find(|t| t.id == video_id).cloned() {
+                self.queue.push(track);
+            }
         }
 
         if let Some(url) = self.resolved.get(&video_id).cloned() {
@@ -126,14 +128,6 @@ impl PlayerView {
         self.error = None;
         self.track = None;
         cx.notify();
-
-        let next_ids: Vec<String> = self
-            .results
-            .iter()
-            .skip(1)
-            .take(3)
-            .map(|t| t.id.clone())
-            .collect();
 
         cx.spawn(async move |this, cx: &mut AsyncApp| {
             let video_id_clone = video_id.clone();
@@ -162,7 +156,7 @@ impl PlayerView {
                             view.error = Some(err.to_string());
                         } else {
                             view.resolved.insert(track.id.clone(), url);
-                            let next = next_ids.clone();
+                            let next = view.queue.upcoming_ids(3);
                             view.prefetch(next, cx);
                         }
                         view.track = Some(track);
@@ -178,19 +172,29 @@ impl PlayerView {
 
     /// Advance to next queued track.
     fn next_track(&mut self, cx: &mut Context<Self>) {
-        let Some(now) = self.now else { return };
-        if let Some(next) = self.queue.get(now + 1).map(|t| t.id.clone()) {
-            self.play(next, cx);
+        if let Some(id) = self.queue.next_id() {
+            self.play(id, cx);
         }
     }
 
     /// Go back to previous queued track.
     fn prev_track(&mut self, cx: &mut Context<Self>) {
-        let Some(now) = self.now else { return };
-        if now > 0
-            && let Some(prev) = self.queue.get(now - 1).map(|t| t.id.clone())
-        {
-            self.play(prev, cx);
+        if let Some(id) = self.queue.prev_id() {
+            self.play(id, cx);
+        }
+    }
+
+    /// If current track ended, advance the queue.
+    fn check_end(&mut self, cx: &mut Context<Self>) {
+        let Some(duration) = self.status.duration else {
+            return;
+        };
+        if duration.is_zero() || self.status.paused || self.status.position.is_zero() {
+            return;
+        }
+        let reached_end = self.status.position + Duration::from_millis(300) >= duration;
+        if reached_end {
+            self.next_track(cx);
         }
     }
 
