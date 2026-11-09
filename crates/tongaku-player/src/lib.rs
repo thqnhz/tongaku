@@ -1,14 +1,15 @@
 //! Playback feature: now-playing view and its workflow.
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
+use gpui_kit::assets::IconName;
+use gpui_kit::component::Icon;
 use gpui_kit::component::button::ButtonRounded;
 use gpui_kit::component::button::*;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::*;
-use gpui_kit::component::{Icon, IconName};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
@@ -23,6 +24,8 @@ pub struct PlayerView {
     input: Entity<InputState>,
     results: Vec<Track>,
     resolved: HashMap<String, String>,
+    queue: VecDeque<Track>,
+    now: Option<usize>,
     searching: bool,
     _search_task: Option<Task<()>>,
     _poll_task: Task<()>,
@@ -68,6 +71,8 @@ impl PlayerView {
             input,
             results: Vec::new(),
             resolved: HashMap::new(),
+            queue: VecDeque::new(),
+            now: None,
             searching: false,
             _search_task: None,
             _poll_task,
@@ -103,6 +108,13 @@ impl PlayerView {
     }
 
     fn play(&mut self, video_id: String, cx: &mut Context<Self>) {
+        if let Some(ix) = self.queue.iter().position(|t| t.id == video_id) {
+            self.now = Some(ix);
+        } else if let Some(track) = self.results.iter().find(|t| t.id == video_id).cloned() {
+            self.queue.push_back(track);
+            self.now = Some(self.queue.len() - 1)
+        }
+
         if let Some(url) = self.resolved.get(&video_id).cloned() {
             self.error = None;
             self.track = self.results.iter().find(|t| t.id == video_id).cloned();
@@ -162,6 +174,24 @@ impl PlayerView {
             .ok();
         })
         .detach();
+    }
+
+    /// Advance to next queued track.
+    fn next_track(&mut self, cx: &mut Context<Self>) {
+        let Some(now) = self.now else { return };
+        if let Some(next) = self.queue.get(now + 1).map(|t| t.id.clone()) {
+            self.play(next, cx);
+        }
+    }
+
+    /// Go back to previous queued track.
+    fn prev_track(&mut self, cx: &mut Context<Self>) {
+        let Some(now) = self.now else { return };
+        if now > 0
+            && let Some(prev) = self.queue.get(now - 1).map(|t| t.id.clone())
+        {
+            self.play(prev, cx);
+        }
     }
 
     fn prefetch(&mut self, ids: Vec<String>, cx: &mut Context<Self>) {
@@ -255,19 +285,37 @@ impl Render for PlayerView {
                     )
             })
             .child(
-                Button::new("toggle")
-                    .primary()
-                    .rounded(ButtonRounded::Large)
-                    .size_12()
-                    .icon(if self.status.paused {
-                        Icon::new(IconName::Play)
-                    } else {
-                        Icon::new(IconName::Pause)
-                    })
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.player.toggle_pause();
-                        cx.notify();
-                    })),
+                div()
+                    .h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        Button::new("prev")
+                            .rounded(ButtonRounded::Large)
+                            .icon(Icon::new(IconName::SkipBack))
+                            .on_click(cx.listener(|this, _, _, cx| this.prev_track(cx))),
+                    )
+                    .child(
+                        Button::new("toggle")
+                            .primary()
+                            .rounded(ButtonRounded::Large)
+                            .size_12()
+                            .icon(if self.status.paused {
+                                Icon::new(IconName::Play)
+                            } else {
+                                Icon::new(IconName::Pause)
+                            })
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.player.toggle_pause();
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("next")
+                            .rounded(ButtonRounded::Large)
+                            .icon(Icon::new(IconName::SkipForward))
+                            .on_click(cx.listener(|this, _, _, cx| this.next_track(cx))),
+                    ),
             )
     }
 }
