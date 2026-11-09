@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use gpui_kit::*;
 
 use tongaku_mpv::MpvPlayer;
@@ -13,7 +15,7 @@ fn main() {
     gpui_kit::application().run(move |cx| {
         gpui_kit::init(cx);
         gpui_kit::open_window(WindowOptions::default(), cx, move |_, cx| {
-            cx.new(|cx| PlayerView::new(video_id.clone(), Box::new(MpvPlayer::new()), cx))
+            cx.new(|cx| PlayerView::new(video_id.clone(), Arc::new(MpvPlayer::new()), cx))
         })
         .expect("Failed to open window");
     });

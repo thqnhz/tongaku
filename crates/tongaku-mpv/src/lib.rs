@@ -8,6 +8,8 @@ use std::time::Duration;
 
 use serde_json::json;
 
+use tongaku_playback::{PlaybackStatus, Player, PlayerError};
+
 struct Ipc {
     writer: UnixStream,
     reader: BufReader<UnixStream>,
@@ -122,9 +124,9 @@ impl MpvPlayer {
     }
 }
 
-impl tongaku_playback::Player for MpvPlayer {
+impl Player for MpvPlayer {
     /// Play any media URL. Streams and decodes inside mpv.
-    fn play(&self, url: &str) -> Result<(), tongaku_playback::PlayerError> {
+    fn play(&self, url: &str) -> Result<(), PlayerError> {
         let mut slot = self.mpv.lock().unwrap();
         if slot.is_none() {
             *slot = Some(Self::spawn_mpv()?);
@@ -145,6 +147,32 @@ impl tongaku_playback::Player for MpvPlayer {
         if let Some(mpv) = self.mpv.lock().unwrap().as_mut() {
             let _ = mpv.ipc.transact(json!(["stop"]));
         }
+    }
+
+    fn status(&self) -> PlaybackStatus {
+        let mut slot = self.mpv.lock().unwrap();
+        let Some(mpv) = slot.as_mut() else {
+            return PlaybackStatus::default();
+        };
+
+        let position = mpv
+            .ipc
+            .transact(json!(["get_property", "time-pos"]))
+            .ok()
+            .and_then(|value| value.get("data").and_then(|d| d.as_f64()))
+            .filter(|secs| secs.is_finite() && *secs >= 0.0)
+            .map(Duration::from_secs_f64)
+            .unwrap_or_default();
+
+        let duration = mpv
+            .ipc
+            .transact(json!(["get_property", "duration"]))
+            .ok()
+            .and_then(|value| value.get("data").and_then(|d| d.as_f64()))
+            .filter(|secs| secs.is_finite() && *secs >= 0.0)
+            .map(Duration::from_secs_f64);
+
+        PlaybackStatus::new(position, duration)
     }
 }
 

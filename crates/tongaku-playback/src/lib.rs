@@ -1,4 +1,6 @@
 //! Playback abstraction: what the app needs from any audio backend.
+use std::time::Duration;
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -17,13 +19,30 @@ impl From<String> for PlayerError {
     }
 }
 
+/// Playback snapshot for UI display.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[non_exhaustive]
+pub struct PlaybackStatus {
+    pub position: Duration,
+    pub duration: Option<Duration>,
+}
+
+impl PlaybackStatus {
+    pub fn new(position: Duration, duration: Option<Duration>) -> Self {
+        Self { position, duration }
+    }
+}
+
 /// Audio playback backend. Implementation own their transport
 /// (processes, devices); the app sees only this contract.
 pub trait Player: Send + Sync {
-    /// Play a media URL, replacing whatever is playinng.
+    /// Play a media URL, replacing whatever is playing.
     fn play(&self, url: &str) -> Result<(), PlayerError>;
 
     fn toggle_pause(&self);
 
     fn stop(&self);
+
+    /// Current playback snapshot.
+    fn status(&self) -> PlaybackStatus;
 }

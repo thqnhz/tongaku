@@ -1,20 +1,26 @@
 //! Playback feature: now-playing view and its workflow.
+use std::sync::Arc;
+use std::time::Duration;
+
 use gpui_kit::component::button::*;
+use gpui_kit::component::progress::Progress;
 use gpui_kit::component::*;
 use gpui_kit::*;
 
-use tongaku_playback::Player;
+use tongaku_playback::{PlaybackStatus, Player};
 use tongaku_ytmusic::{Client, Track, YtError};
 
 pub struct PlayerView {
-    player: Box<dyn Player>,
+    player: Arc<dyn Player>,
     track: Option<Track>,
+    status: PlaybackStatus,
     error: Option<String>,
     _fetch_task: Task<()>,
+    _poll_task: Task<()>,
 }
 
 impl PlayerView {
-    pub fn new(video_id: String, player: Box<dyn Player>, cx: &mut Context<Self>) -> Self {
+    pub fn new(video_id: String, player: Arc<dyn Player>, cx: &mut Context<Self>) -> Self {
         let client = Client::new();
 
         let _fetch_task = cx.spawn(async move |this, cx: &mut AsyncApp| {
@@ -41,11 +47,33 @@ impl PlayerView {
             .ok();
         });
 
+        let poll_player = player.clone();
+        let _poll_task = cx.spawn(async move |this, cx: &mut AsyncApp| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(500))
+                    .await;
+
+                let player = poll_player.clone();
+                let status = cx.background_spawn(async move { player.status() }).await;
+
+                this.update(cx, |view, cx| {
+                    if view.status != status {
+                        view.status = status;
+                        cx.notify();
+                    }
+                })
+                .ok();
+            }
+        });
+
         Self {
             player,
             track: None,
+            status: PlaybackStatus::default(),
             error: None,
             _fetch_task,
+            _poll_task,
         }
     }
 
@@ -60,6 +88,11 @@ impl PlayerView {
     }
 }
 
+fn fmt_time(time: Duration) -> String {
+    let secs = time.as_secs();
+    format!("{}:{:02}", secs / 60, secs % 60)
+}
+
 impl Render for PlayerView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
@@ -69,6 +102,31 @@ impl Render for PlayerView {
             .items_center()
             .justify_center()
             .child(self.status_text())
+            .child({
+                let percent = match self.status.duration {
+                    Some(duration) if !duration.is_zero() => {
+                        (self.status.position.as_secs_f32() / duration.as_secs_f32() * 100.)
+                            .clamp(0., 100.)
+                    }
+                    _ => 0.,
+                };
+                div()
+                    .v_flex()
+                    .w_96()
+                    .gap_1()
+                    .child(Progress::new("track-progress").value(percent))
+                    .child(
+                        div()
+                            .h_flex()
+                            .w_full()
+                            .justify_between()
+                            .child(fmt_time(self.status.position))
+                            .child(match self.status.duration {
+                                Some(duration) => fmt_time(duration),
+                                None => "--:--".to_owned(),
+                            }),
+                    )
+            })
             .child(
                 Button::new("toggle")
                     .primary()
