@@ -1,6 +1,7 @@
 //! Playback engine
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -82,18 +83,24 @@ impl MpvPlayer {
             std::env::temp_dir().join(format!("tongaku-mpv-{}.sock", std::process::id()));
         let _ = std::fs::remove_file(&socket_path);
 
-        let mut child = Command::new("mpv")
-            .arg("--no-video")
-            .arg("--really-quiet")
-            .arg("--idle=yes")
-            .arg(format!("--input-ipc-server={}", socket_path.display()))
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|err| {
-                tongaku_playback::PlayerError::new(format!("failed to spawn mpv: {err}"))
-            })?;
+        let mut child = unsafe {
+            Command::new("mpv")
+                .arg("--no-video")
+                .arg("--really-quiet")
+                .arg("--idle=yes")
+                .arg(format!("--input-ipc-server={}", socket_path.display()))
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .pre_exec(|| {
+                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                    Ok(())
+                })
+                .spawn()
+                .map_err(|err| {
+                    tongaku_playback::PlayerError::new(format!("failed to spawn mpv: {err}"))
+                })?
+        };
 
         // mpv creates the socket asynchronously after startup.
         let mut stream = None;
@@ -113,6 +120,7 @@ impl MpvPlayer {
                 ));
             }
         };
+
         Ok(Mpv {
             ipc: Ipc {
                 writer: stream.try_clone().unwrap(),
@@ -181,6 +189,14 @@ impl Player for MpvPlayer {
             .map(Duration::from_secs_f64);
 
         PlaybackStatus::new(position, duration, paused)
+    }
+
+    fn seek(&self, position: Duration) {
+        if let Some(mpv) = self.mpv.lock().unwrap().as_mut() {
+            let _ = mpv
+                .ipc
+                .transact(json!(["seek", position.as_secs_f64(), "absolute"]));
+        }
     }
 }
 

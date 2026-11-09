@@ -50,4 +50,6 @@ pub trait Player: Send + Sync {
 
     /// Current playback snapshot.
     fn status(&self) -> PlaybackStatus;
+
+    fn seek(&self, position: Duration);
 }

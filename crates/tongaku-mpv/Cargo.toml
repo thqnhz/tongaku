@@ -8,5 +8,6 @@ description = "Mpv playback engine."
 [dependencies]
 serde_json.workspace = true
 thiserror.workspace = true
+libc.workspace = true
 
 tongaku-playback = { path = "../tongaku-playback" }
