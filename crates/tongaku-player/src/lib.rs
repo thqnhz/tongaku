@@ -28,8 +28,11 @@ impl PlayerView {
         let _fetch_task = cx.spawn(async move |this, cx: &mut AsyncApp| {
             let result = cx
                 .background_spawn(async move {
-                    let track = client.get_track(&video_id)?;
-                    let url = Client::stream_url(&track.id)?;
+                    let (track, stream) = client.get_track_with_stream(&video_id)?;
+                    let url = match stream {
+                        Some(stream) => stream.url,
+                        None => Client::stream_url(&track.id)?,
+                    };
                     Ok::<_, YtError>((track, url))
                 })
                 .await;
