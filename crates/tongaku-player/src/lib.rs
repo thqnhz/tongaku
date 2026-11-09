@@ -2,9 +2,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use gpui_kit::component::button::ButtonRounded;
 use gpui_kit::component::button::*;
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::*;
+use gpui_kit::component::{Icon, IconName};
 use gpui_kit::*;
 
 use tongaku_playback::{PlaybackStatus, Player};
@@ -130,7 +132,13 @@ impl Render for PlayerView {
             .child(
                 Button::new("toggle")
                     .primary()
-                    .label("Play / Pause")
+                    .rounded(ButtonRounded::Large)
+                    .size_12()
+                    .icon(if self.status.paused {
+                        Icon::new(IconName::Play)
+                    } else {
+                        Icon::new(IconName::Pause)
+                    })
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.player.toggle_pause();
                         cx.notify();

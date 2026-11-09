@@ -155,6 +155,13 @@ impl Player for MpvPlayer {
             return PlaybackStatus::default();
         };
 
+        let paused = mpv
+            .ipc
+            .transact(json!(["get_property", "pause"]))
+            .ok()
+            .and_then(|value| value.get("data").and_then(|d| d.as_bool()))
+            .unwrap_or(false);
+
         let position = mpv
             .ipc
             .transact(json!(["get_property", "time-pos"]))
@@ -172,7 +179,7 @@ impl Player for MpvPlayer {
             .filter(|secs| secs.is_finite() && *secs >= 0.0)
             .map(Duration::from_secs_f64);
 
-        PlaybackStatus::new(position, duration)
+        PlaybackStatus::new(position, duration, paused)
     }
 }
 

@@ -25,11 +25,16 @@ impl From<String> for PlayerError {
 pub struct PlaybackStatus {
     pub position: Duration,
     pub duration: Option<Duration>,
+    pub paused: bool,
 }
 
 impl PlaybackStatus {
-    pub fn new(position: Duration, duration: Option<Duration>) -> Self {
-        Self { position, duration }
+    pub fn new(position: Duration, duration: Option<Duration>, paused: bool) -> Self {
+        Self {
+            position,
+            duration,
+            paused,
+        }
     }
 }
 
