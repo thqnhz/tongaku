@@ -116,86 +116,102 @@ impl Render for PlayerView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .v_flex()
-            .gap_2()
             .size_full()
-            .items_center()
-            .justify_center()
-            .child(Input::new(&self.input).w_64())
-            .when(self.searching, |this| this.child("Searching..."))
             .child(
                 div()
                     .v_flex()
-                    .w_96()
-                    .children(self.results.iter().take(10).map(|track| {
-                        let id = track.id.clone();
+                    .flex_1()
+                    .gap_2()
+                    .items_center()
+                    .justify_start()
+                    .pt_6()
+                    .child(Input::new(&self.input).w_64())
+                    .when(self.searching, |this| this.child("Searching..."))
+                    .child(
                         div()
-                            .id(format!("search-result-{id}"))
-                            .cursor_pointer()
-                            .child(format!("{} - {}", track.artist, track.title))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.play(id.clone(), cx);
-                            }))
-                    })),
+                            .v_flex()
+                            .w_96()
+                            .max_h(px(320.))
+                            .overflow_hidden()
+                            .children(self.results.iter().take(10).map(|track| {
+                                let id = track.id.clone();
+                                div()
+                                    .id(format!("search-result-{id}"))
+                                    .cursor_pointer()
+                                    .child(format!("{} - {}", track.artist, track.title))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.play(id.clone(), cx);
+                                    }))
+                            })),
+                    ),
             )
-            .child(self.status_text())
-            .child({
-                let dur_secs = self.status.duration.map(|d| d.as_secs_f32()).unwrap_or(1.0);
-                let pos_frac =
-                    (self.status.position.as_secs_f32() / dur_secs.max(1.0)).clamp(0.0, 1.0);
-                self.seek_state.update(cx, |state, cx| {
-                    if !self.dragging {
-                        state.set_value(SliderValue::Single(pos_frac), window, cx);
-                    }
-                });
+            .child(
                 div()
                     .v_flex()
-                    .w_96()
-                    .gap_1()
-                    .child(Slider::new(&self.seek_state).horizontal())
+                    .gap_2()
+                    .items_center()
+                    .border_t_1()
+                    .child(self.status_text())
+                    .child({
+                        let dur_secs = self.status.duration.map(|d| d.as_secs_f32()).unwrap_or(1.0);
+                        let pos_frac = (self.status.position.as_secs_f32() / dur_secs.max(1.0))
+                            .clamp(0.0, 1.0);
+                        self.seek_state.update(cx, |state, cx| {
+                            if !self.dragging {
+                                state.set_value(SliderValue::Single(pos_frac), window, cx);
+                            }
+                        });
+                        div()
+                            .v_flex()
+                            .w_96()
+                            .gap_1()
+                            .child(Slider::new(&self.seek_state).horizontal())
+                            .child(
+                                div()
+                                    .h_flex()
+                                    .w_full()
+                                    .justify_between()
+                                    .child(fmt_time(self.status.position))
+                                    .child(match self.status.duration {
+                                        Some(duration) => fmt_time(duration),
+                                        None => "--:--".to_owned(),
+                                    }),
+                            )
+                    })
                     .child(
                         div()
                             .h_flex()
-                            .w_full()
-                            .justify_between()
-                            .child(fmt_time(self.status.position))
-                            .child(match self.status.duration {
-                                Some(duration) => fmt_time(duration),
-                                None => "--:--".to_owned(),
-                            }),
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                Button::new("prev")
+                                    .rounded(ButtonRounded::Large)
+                                    .icon(Icon::new(IconName::SkipBack))
+                                    .on_click(cx.listener(|this, _, _, cx| this.prev_track(cx))),
+                            )
+                            .child(
+                                Button::new("toggle")
+                                    .primary()
+                                    .rounded(ButtonRounded::Large)
+                                    .size_12()
+                                    .icon(if self.status.paused {
+                                        Icon::new(IconName::Play)
+                                    } else {
+                                        Icon::new(IconName::Pause)
+                                    })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.player.toggle_pause();
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("next")
+                                    .rounded(ButtonRounded::Large)
+                                    .icon(Icon::new(IconName::SkipForward))
+                                    .on_click(cx.listener(|this, _, _, cx| this.next_track(cx))),
+                            ),
                     )
-            })
-            .child(
-                div()
-                    .h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        Button::new("prev")
-                            .rounded(ButtonRounded::Large)
-                            .icon(Icon::new(IconName::SkipBack))
-                            .on_click(cx.listener(|this, _, _, cx| this.prev_track(cx))),
-                    )
-                    .child(
-                        Button::new("toggle")
-                            .primary()
-                            .rounded(ButtonRounded::Large)
-                            .size_12()
-                            .icon(if self.status.paused {
-                                Icon::new(IconName::Play)
-                            } else {
-                                Icon::new(IconName::Pause)
-                            })
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.player.toggle_pause();
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        Button::new("next")
-                            .rounded(ButtonRounded::Large)
-                            .icon(Icon::new(IconName::SkipForward))
-                            .on_click(cx.listener(|this, _, _, cx| this.next_track(cx))),
-                    ),
+                    .py_3(),
             )
     }
 }
