@@ -1,4 +1,5 @@
 //! Playback feature: now-playing view and its workflow.
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,6 +22,7 @@ pub struct PlayerView {
     error: Option<String>,
     input: Entity<InputState>,
     results: Vec<Track>,
+    resolved: HashMap<String, String>,
     searching: bool,
     _search_task: Option<Task<()>>,
     _poll_task: Task<()>,
@@ -65,6 +67,7 @@ impl PlayerView {
             error: None,
             input,
             results: Vec::new(),
+            resolved: HashMap::new(),
             searching: false,
             _search_task: None,
             _poll_task,
@@ -100,25 +103,55 @@ impl PlayerView {
     }
 
     fn play(&mut self, video_id: String, cx: &mut Context<Self>) {
+        if let Some(url) = self.resolved.get(&video_id).cloned() {
+            self.error = None;
+            self.track = self.results.iter().find(|t| t.id == video_id).cloned();
+            self.player.play(&url).ok();
+            cx.notify();
+            return;
+        }
+
         self.error = None;
         self.track = None;
         cx.notify();
 
-        let client = Client::new();
+        let next_ids: Vec<String> = self
+            .results
+            .iter()
+            .skip(1)
+            .take(3)
+            .map(|t| t.id.clone())
+            .collect();
+
         cx.spawn(async move |this, cx: &mut AsyncApp| {
+            let video_id_clone = video_id.clone();
+            let client_clone = Client::new();
             let result = cx
                 .background_spawn(async move {
-                    let track = client.get_track_with_stream(&video_id)?;
-                    let url = Client::stream_url(&track.id)?;
-                    Ok::<_, YtError>((track, url))
+                    let track = client_clone.get_track(&video_id_clone)?;
+                    Ok::<_, YtError>(track)
                 })
                 .await;
+
+            let url_result = cx
+                .background_spawn(async move { Client::stream_url(&video_id) })
+                .await;
+
+            let result = match (result, url_result) {
+                (Ok(track), Ok(url)) => Ok((track, url)),
+                (Err(err), _) => Err(err),
+                (_, Err(err)) => Err(err),
+            };
 
             this.update(cx, |view, cx| {
                 match result {
                     Ok((track, url)) => {
                         if let Err(err) = view.player.play(&url) {
                             view.error = Some(err.to_string());
+                        } else {
+                            view.resolved.insert(track.id.clone(), url);
+                            let next = next_ids.clone();
+                            view.prefetch(next, cx);
                         }
                         view.track = Some(track);
                     }
@@ -129,6 +162,29 @@ impl PlayerView {
             .ok();
         })
         .detach();
+    }
+
+    fn prefetch(&mut self, ids: Vec<String>, cx: &mut Context<Self>) {
+        let pending: Vec<String> = ids
+            .into_iter()
+            .filter(|id| !self.resolved.contains_key(id))
+            .take(3)
+            .collect();
+        for id in pending {
+            cx.spawn(async move |this, cx: &mut AsyncApp| {
+                let client_id = id.clone();
+                let url = cx
+                    .background_spawn(async move { Client::stream_url(&client_id) })
+                    .await;
+                if let Ok(url) = url {
+                    this.update(cx, |view, _| {
+                        view.resolved.insert(id.clone(), url);
+                    })
+                    .ok();
+                }
+            })
+            .detach();
+        }
     }
 
     fn status_text(&self) -> SharedString {

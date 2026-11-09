@@ -49,7 +49,7 @@ impl Client {
     }
 
     /// Metadata + direct audio URL for one video/track id.
-    pub fn get_track_with_stream(&self, video_id: &str) -> Result<Track, YtError> {
+    pub fn get_track(&self, video_id: &str) -> Result<Track, YtError> {
         let body = json!({
             "context": {
                 "client": {
