@@ -143,14 +143,4 @@ impl PlayerView {
             .detach();
         }
     }
-
-    pub(crate) fn status_text(&self) -> SharedString {
-        if let Some(error) = &self.error {
-            format!("Error: {error}").into()
-        } else if let Some(track) = &self.track {
-            format!("{} - {}", track.artist, track.title).into()
-        } else {
-            "Nothing playing - search a song".into()
-        }
-    }
 }
