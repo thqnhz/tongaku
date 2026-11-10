@@ -95,7 +95,7 @@ impl PlayerView {
 
     /// Advance to next queued track.
     pub(crate) fn next_track(&mut self, cx: &mut Context<Self>) {
-        if let Some(id) = self.queue.next_id() {
+        if let Some(id) = self.queue.next_id(self.looping, self.shuffle) {
             self.play(id, cx);
         }
     }

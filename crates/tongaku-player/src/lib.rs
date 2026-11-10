@@ -31,6 +31,8 @@ pub struct PlayerView {
     resolved: HashMap<String, String>,
     queue: queue::Queue,
     seek_state: Entity<SliderState>,
+    looping: bool,
+    shuffle: bool,
     dragging: bool,
     searching: bool,
     _search_task: Option<Task<()>>,
@@ -98,12 +100,24 @@ impl PlayerView {
             resolved: HashMap::new(),
             queue: Queue::new(),
             seek_state,
+            looping: false,
+            shuffle: false,
             dragging: false,
             searching: false,
             _search_task: None,
             _poll_task,
             _subscriptions,
         }
+    }
+
+    fn toggle_loop(&mut self, cx: &mut Context<Self>) {
+        self.looping = !self.looping;
+        cx.notify();
+    }
+
+    fn toggle_shuffle(&mut self, cx: &mut Context<Self>) {
+        self.shuffle = !self.shuffle;
+        cx.notify();
     }
 }
 
@@ -184,6 +198,12 @@ impl Render for PlayerView {
                             .gap_2()
                             .items_center()
                             .child(
+                                Button::new("loop")
+                                    .rounded(ButtonRounded::Large)
+                                    .icon(Icon::new(IconName::Repeat))
+                                    .on_click(cx.listener(|this, _, _, cx| this.toggle_loop(cx))),
+                            )
+                            .child(
                                 Button::new("prev")
                                     .rounded(ButtonRounded::Large)
                                     .icon(Icon::new(IconName::SkipBack))
@@ -209,6 +229,14 @@ impl Render for PlayerView {
                                     .rounded(ButtonRounded::Large)
                                     .icon(Icon::new(IconName::SkipForward))
                                     .on_click(cx.listener(|this, _, _, cx| this.next_track(cx))),
+                            )
+                            .child(
+                                Button::new("shuffle")
+                                    .rounded(ButtonRounded::Large)
+                                    .icon(Icon::new(IconName::Shuffle))
+                                    .on_click(
+                                        cx.listener(|this, _, _, cx| this.toggle_shuffle(cx)),
+                                    ),
                             ),
                     )
                     .py_3(),
